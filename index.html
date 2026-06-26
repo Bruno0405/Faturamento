@@ -617,20 +617,20 @@
 
   // MÁSCARAS
   function mascararCPF(input) {
-    let v = input.value.replace(/\D/g, '');
+    let v = input.value.replace(/\D/g, '').slice(0, 11);
     v = v.replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})$/, '$1-$2');
     input.value = v;
   }
 
   function mascararCNPJ(input) {
-    let v = input.value.replace(/\D/g, '');
+    let v = input.value.replace(/\D/g, '').slice(0, 14);
     v = v.replace(/^(\d{2})(\d)/, '$1.$2').replace(/^(\d{2})\.(\d{3})(\d)/, '$1.$2.$3')
          .replace(/\.(\d{3})(\d)/, '.$1/$2').replace(/(\d{4})(\d)/, '$1-$2');
     input.value = v;
   }
 
   function mascararFone(input) {
-    let v = input.value.replace(/\D/g, '');
+    let v = input.value.replace(/\D/g, '').slice(0, 11);
     v = v.length <= 10
       ? v.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{4})(\d)/, '$1-$2')
       : v.replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2');
@@ -638,7 +638,7 @@
   }
 
   function mascararCEP(input) {
-    let v = input.value.replace(/\D/g, '').replace(/(\d{5})(\d)/, '$1-$2');
+    let v = input.value.replace(/\D/g, '').slice(0, 8).replace(/(\d{5})(\d)/, '$1-$2');
     input.value = v;
   }
 
@@ -655,21 +655,32 @@
     input.placeholder = 'Buscando...';
 
     try {
-      const resp = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      const resp = await fetch(`https://viacep.com.br/ws/${cep}/json/`, { signal: controller.signal });
+      clearTimeout(timeout);
       const data = await resp.json();
+
+      input.style.background = '';
+      input.placeholder = '00000-000';
 
       if (data.erro) {
         input.style.background = '#fdecea';
-        input.placeholder = 'CEP não encontrado';
-        setTimeout(() => { input.style.background = ''; input.placeholder = '00000-000'; }, 2000);
+        setTimeout(() => { input.style.background = ''; }, 2000);
+        mostrarAlerta('CEP não encontrado. Preencha o endereço manualmente.', 'error');
         return;
       }
 
-      document.getElementById(`${prefixo}-logradouro`).value = data.logradouro || '';
-      document.getElementById(`${prefixo}-bairro`).value = data.bairro || '';
-      document.getElementById(`${prefixo}-cidade`).value = data.localidade || '';
-      const estadoEl = document.getElementById(`${prefixo}-estado`);
-      if (estadoEl) estadoEl.value = data.uf || '';
+      // Só preenche campos que estão vazios
+      const logEl = document.getElementById(`${prefixo}-logradouro`);
+      const bairEl = document.getElementById(`${prefixo}-bairro`);
+      const cidEl  = document.getElementById(`${prefixo}-cidade`);
+      const ufEl   = document.getElementById(`${prefixo}-estado`);
+
+      if (logEl && !logEl.value.trim()) logEl.value = data.logradouro || '';
+      if (bairEl && !bairEl.value.trim()) bairEl.value = data.bairro || '';
+      if (cidEl  && !cidEl.value.trim())  cidEl.value  = data.localidade || '';
+      if (ufEl   && !ufEl.value)          ufEl.value   = data.uf || '';
 
       input.style.background = '#f0fbf4';
       setTimeout(() => { input.style.background = ''; }, 1500);
@@ -677,6 +688,9 @@
     } catch(e) {
       input.style.background = '';
       input.placeholder = '00000-000';
+      if (e.name === 'AbortError') {
+        mostrarAlerta('Tempo esgotado ao buscar o CEP. Preencha o endereço manualmente.', 'error');
+      }
     }
   }
 
@@ -812,6 +826,14 @@
 
   // SUBMIT
   document.getElementById('cadastro-form').addEventListener('submit', function(e) {
+    // Desabilita campos dos blocos ocultos para não poluir o e-mail
+    ['pf', 'pj', 'pr'].forEach(p => {
+      if (p !== tipoSelecionado) {
+        document.querySelectorAll(`#bloco-${p} input, #bloco-${p} select`).forEach(el => {
+          el.disabled = true;
+        });
+      }
+    });
     document.getElementById('btn-enviar').disabled = true;
     document.getElementById('btn-enviar').textContent = 'Enviando...';
   });
